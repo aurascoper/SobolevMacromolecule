@@ -1,0 +1,21 @@
+# Core scientific computing
+numpy>=1.24
+scipy>=1.10
+pandas>=2.0
+
+# Deep learning
+torch>=2.0
+jax[cuda12_pip]>=0.4.20; sys_platform == "linux"
+jax>=0.4.20; sys_platform != "linux"
+
+# Bioinformatics
+biopython>=1.86
+biotite>=1.6
+
+# RNA structure / ML
+einops>=0.7
+pyyaml>=6.0
+tqdm>=4.65
+
+# Visualization (optional)
+matplotlib>=3.7

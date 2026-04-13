@@ -4,7 +4,9 @@
 
 Multi-model RNA 3D structure prediction pipeline with a custom physics relaxation engine, designed for megascale targets (up to 4,640 nt). Achieves a private/public score inversion (0.387 public → 0.509 private) through physics-guided generalization rather than benchmark overfitting.
 
-📄 **[Full technical whitepaper with derivations](docs/whitepaper.md)** · [Reviewer notes](docs/reviewer-notes-opus.md)
+📄 **[Full technical whitepaper with derivations](docs/whitepaper.md)** · [Reviewer notes](docs/reviewer-notes-opus.md) · [Kaggle competition](https://www.kaggle.com/competitions/stanford-rna-3d-folding-2)
+
+> **Reproducibility note:** `SobolevRNA.ipynb` is Kaggle-native — model weights are mounted as Kaggle datasets under `/kaggle/input/`. Running locally requires substituting paths to locally downloaded weights for RNA-FM, Boltz-1, Protenix, and RibonanzaNet-2. See [ATTRIBUTION.md](ATTRIBUTION.md) for source links to each model.
 
 ---
 
