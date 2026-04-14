@@ -118,7 +118,9 @@ The Flory-scaling target enforces physical compaction:
 
 $$R_g^{\text{target}} = 3.5 \cdot N^{0.45} \quad \text{(Å)}$$
 
-$R_g(\mathbf{x}) = \sqrt{\frac{1}{N}\sum_i \|\mathbf{x}_i - \bar{\mathbf{x}}\|^2}$, and $k_{R_g} = 1.0$.
+$$R_g(\mathbf{x}) = \sqrt{\frac{1}{N}\sum_i \|\mathbf{x}_i - \bar{\mathbf{x}}\|^2}$$
+
+with $k_{R_g} = 1.0$.
 
 ---
 
