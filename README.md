@@ -201,8 +201,8 @@ with the correct JAX DCT path:
 
 $$
 \widetilde{\nabla H}
-= \operatorname{IDCT}_{II}\left(
-\frac{\operatorname{DCT}_{II}(\nabla H)_k}{1+\alpha k^2}
+= \mathrm{IDCT}_{II}\left(
+\frac{\mathrm{DCT}_{II}(\nabla H)_k}{1+\alpha k^2}
 \right),
 $$
 
