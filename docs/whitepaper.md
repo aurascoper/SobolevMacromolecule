@@ -209,7 +209,15 @@ The pipeline controller (cell 26) implements a three-tier routing policy.
 
 **Tier 1 — Adaptive Template-Based Modeling.** For every target, the controller first searches the training set for structures with sequence identity above an adaptive threshold $\tau(L)$ determined by the helper `get_adaptive_identity`:
 
-$$\tau(L) = \begin{cases} 50\% & L \leq 1000 \\ 35\% & 1000 < L \leq 3000 \\ 20\% & L > 3000 \end{cases} \quad (20)$$
+$$
+\tau(L) =
+\begin{cases}
+50\% & L \leq 1000 \\
+35\% & 1000 < L \leq 3000 \\
+20\% & L > 3000
+\end{cases}
+\quad (20)
+$$
 
 The rationale is data-sparsity scaling. For short RNAs, the PDB contains many near-neighbors and a strict 50% threshold finds high-quality templates; for megascale RNAs, strict thresholds produce no hits at all, and a permissive threshold of 20% accepts distant homologs whose backbone topology alone — even with heavy sequence divergence — is informative. Template coordinates are adapted to the query sequence via pairwise alignment (`Bio.Align.PairwiseAligner`). TBM is the *preferred* path for any target that has an acceptable template.
 
