@@ -138,6 +138,119 @@ $$\eta(t) = \eta_0 \left(1 - \frac{t}{T}\right)$$
 
 ---
 
+## Guarded Hybrid Polish for External Candidate Pipelines
+
+SobolevRNA now includes `sobolev_polish_gate.py`, a production-safe bridge for
+using SHR as a post-processing layer on strong external candidates such as the
+Stanford RNA 3D Folding Part 2 1st-place ensemble. The intended integration is
+serial:
+
+```
+external predictors (Boltz2 / Protenix / DRFold2 / RNAPro / TBM)
+        → C1' candidate slots
+        → SobolevRNA contact map C
+        → guarded shr_polish
+        → accept/reject gate
+        → submission.csv
+```
+
+The bridge deliberately calls `shr_polish`, not `shr_refine_single`. External
+DL/TBM candidates already have plausible global folds, so the polish stage uses
+the input coordinates as the initial condition and never adds stochastic
+Gaussian jitter. The polish Hamiltonian is the local C1′ objective
+
+$$
+H_{\mathrm{polish}}(X; C)
+= E_{\mathrm{bond}}(X)
++ E_{\mathrm{steric}}(X)
++ E_{\mathrm{DL}}(X; C),
+$$
+
+with $E_{R_g}$ disabled during polish by setting $R_g^{\mathrm{target}} = 0$.
+This prevents the post-processor from imposing a new global compaction basin on
+a model that may already have the right topology. The terms are
+
+$$
+E_{\mathrm{bond}}(X)
+= k_{\mathrm{bond}}\sum_{i=1}^{N-1}
+\left(\lVert x_{i+1}-x_i\rVert_2 - 5.95\right)^2,
+$$
+
+$$
+E_{\mathrm{steric}}(X)
+= \sum_{j>i+1}
+\left[
+\max\left(
+0,\;
+\sigma_{\mathrm{clash}}
+- \sqrt{\lVert x_i-x_j\rVert_2^2 + 10^{-2}}
+\right)
+\right]^2,
+$$
+
+$$
+E_{\mathrm{DL}}(X; C)
+= w_{\mathrm{DL}}\sum_{i,j} C_{ij}
+\left[
+\max\left(0,\lVert x_i-x_j\rVert_2 - 8.0\right)
+\right]^2.
+$$
+
+The gradient update uses the same Sobolev $H^1$ resolvent as SHR, implemented
+with the correct JAX DCT path:
+
+$$
+\widetilde{\nabla H}
+= \operatorname{IDCT}_{II}\left(
+\frac{\operatorname{DCT}_{II}(\nabla H)_k}{1+\alpha k^2}
+\right),
+$$
+
+where `sobolev_polish_gate.py` imports `jax.scipy.fft as jfft` and enables
+`jax_enable_x64=True`. The production defaults are
+$\alpha = 5.0$, `clip = 2.0`, $w_{\mathrm{DL}} = 2.0$,
+$k_{\mathrm{bond}} = 100.0$, $\sigma_{\mathrm{clash}} = 3.0$, 2000 steps, and
+learning rate 0.01.
+
+### Accept/Reject Gate
+
+In a fixed best-of-5 submission, post-processing is not automatically additive:
+replacing a raw candidate can reduce the best slot if the refined structure
+drifts away from the native fold. The bridge therefore accepts a polished
+candidate only if all checks pass:
+
+1. Shape matches the raw candidate and all coordinates are finite, non-sentinel,
+   and within the sanitizer bound.
+2. Bond violations do not increase, where a violation is an adjacent C1′
+   distance with $\lvert d - 5.95\rvert > 2.0$ Å.
+3. Steric clashes do not increase, using KDTree pairs below 3.0 Å and excluding
+   adjacent residues.
+4. $H_{\mathrm{polish}}(X_{\mathrm{refined}}; C) <
+   H_{\mathrm{polish}}(X_{\mathrm{raw}}; C)$.
+5. $R_g(X_{\mathrm{refined}})$ lies in
+   $[0.7, 1.5]\cdot 3.5N^{0.45}$.
+6. $\max_i \lVert x_{i+1}-x_i\rVert_2 < 12.0$ Å.
+7. `tm_self >= 0.85`, computed by Kabsch-aligning refined coordinates to raw
+   coordinates and applying a TM-style C1′ similarity over valid residues.
+
+Rejected candidates leave the original external prediction unchanged. Accepted
+candidates are recorded in `sobolev_polished_slots.csv`; all candidates receive
+metrics and reject reasons in `sobolev_polish_report.csv`.
+
+### Runtime Controls
+
+| Variable | Default | Effect |
+|---|---:|---|
+| `SOBOLEVRNA_POLISH` | `1` | Set to `0` to disable the gate and preserve raw slots |
+| `SOBOLEVRNA_POLISH_SLOTS` | all | Optional comma-separated slot allowlist, e.g. `1,2,3` |
+| `SOBOLEVRNA_POLISH_STEPS` | `2000` | Number of polish steps |
+| `SOBOLEVRNA_POLISH_LR` | `0.01` | Polish learning rate |
+
+The module also accepts the earlier prototype prefix `SOBOLERNA_*` as a
+backward-compatible alias.
+
+---
+
 ## Dynamic Parameter Schedule
 
 Parameters adapt linearly with sequence length across three tiers:
