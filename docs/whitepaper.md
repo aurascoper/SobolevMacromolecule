@@ -211,11 +211,13 @@ The pipeline controller (cell 26) implements a three-tier routing policy.
 
 $$
 \tau(L) =
-\begin{cases}
+\left\{
+\begin{array}{ll}
 50\% & L \leq 1000 \\
 35\% & 1000 < L \leq 3000 \\
 20\% & L > 3000
-\end{cases}
+\end{array}
+\right.
 \quad (20)
 $$
 
