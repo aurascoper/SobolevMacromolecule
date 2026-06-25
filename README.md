@@ -323,7 +323,7 @@ The private > public inversion reflects that SHR physics generalizes to novel RN
 
 ## Sobolev Macromolecule Extension
 
-The Sobolev $H^1$ preconditioner is polymer-agnostic: it smooths high-frequency gradient modes along an indexed chain. To adapt the engine beyond RNA, keep the JAX optimizer and swap the frontend restraints plus physical constants:
+The Sobolev $H^1$ preconditioner is polymer-agnostic: it smooths high-frequency gradient modes along an indexed chain. `sobolev_macromolecule.py` turns that into a small object-oriented factory. The JAX optimization loop is shared; the factory swaps only the bead identity, physical constants, optional bending term, and expected restraint frontends:
 
 | Domain | Bead | $d_0$ | Compaction | Frontend restraints |
 |---|---|---:|---|---|
@@ -332,6 +332,19 @@ The Sobolev $H^1$ preconditioner is polymer-agnostic: it smooths high-frequency 
 | dsDNA | C1′ or P | ~4.8 Å | worm-like-chain bending term, not Flory collapse | Boltz/Protenix/AF3 nucleic-acid complex restraints |
 
 For dsDNA, disable the RNA-style collapse basin and add bending plus inter-strand Watson-Crick restraints so the optimizer preserves helix stiffness rather than crushing the duplex.
+
+```python
+from sobolev_macromolecule import create_macromolecule, watson_crick_contact_map
+
+protein_engine = create_macromolecule("protein")
+protein_terms = protein_engine.energy_terms(ca_coords, contact_map=protein_contacts)
+
+dna_engine = create_macromolecule("dsdna", bend_stiffness=8.0)
+watson_crick_contacts = watson_crick_contact_map(n_base_pairs=1000)
+polished_dna = dna_engine.polish(p_coords, contact_map=watson_crick_contacts)
+```
+
+The presets are deliberately lightweight. A new frontend only needs to emit a square contact/restraint matrix in the same residue order as the coordinates; `SobolevMacromolecule.polish()` handles the shared bond, steric, contact, radius-of-gyration, optional bending, and Sobolev $H^1$ gradient-preconditioned update. For dsDNA, `watson_crick_contact_map()` builds the explicit inter-strand pairing restraints while the bending term preserves helix stiffness.
 
 ---
 
