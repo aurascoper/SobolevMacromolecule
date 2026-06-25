@@ -1,4 +1,4 @@
-# SobolevRNA
+# SobolevMacromolecule
 
 **Megascale RNA 3D Structure Prediction · 0.509 private TM-score · Stanford RNA 3D Folding Part 2 (Kaggle)**
 
