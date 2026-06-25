@@ -186,6 +186,85 @@ class SobolevMacromoleculeTests(unittest.TestCase):
         self.assertEqual(polished.shape, coords.shape)
         self.assertTrue(np.isfinite(polished).all())
 
+    def test_graph_laplacian_filter_preserves_disconnected_components(self):
+        graph = sm.create_macro_graph(
+            ["glycan", "glycan", "ligand", "ligand"],
+            [(0, 1, 1.4), (2, 3, 1.5)],
+        )
+        gradient = np.zeros((4, 3), dtype=np.float64)
+        gradient[:2, 0] = [1.0, -1.0]
+
+        smoothed = graph.smooth_gradient(gradient)
+        np.testing.assert_allclose(smoothed[2:], 0.0, atol=1e-12)
+        self.assertGreater(np.linalg.norm(smoothed[:2]), 0.0)
+
+    def test_graph_energy_handles_branched_glycan_topology(self):
+        graph = sm.create_macro_graph(
+            ["glycan", "glycan", "glycan", "glycan"],
+            [(0, 1, 1.4), (1, 2, 1.4), (1, 3, 1.6)],
+            radii=[1.0, 1.0, 1.0, 1.0],
+        )
+        coords = np.array(
+            [
+                [0.0, 0.0, 0.0],
+                [1.4, 0.0, 0.0],
+                [2.8, 0.0, 0.0],
+                [1.4, 1.6, 0.0],
+            ],
+            dtype=np.float64,
+        )
+
+        terms = graph.energy_terms(coords)
+        self.assertLess(terms["bond"], 1e-6)
+
+    def test_graph_sterics_use_coarse_grained_radii(self):
+        graph = sm.create_macro_graph(["coarse", "coarse"], [], radii=[15.0, 15.0])
+        coords = np.array([[0.0, 0.0, 0.0], [20.0, 0.0, 0.0]], dtype=np.float64)
+
+        self.assertGreater(graph.energy_terms(coords)["steric"], 0.0)
+
+    def test_graph_slab_penalizes_lipid_tail_in_water_and_head_in_oil(self):
+        slab = sm.SlabPotential(half_thickness=10.0)
+        graph = sm.create_macro_graph(
+            ["lipid_tail", "lipid_head"],
+            [],
+            radii=[1.0, 1.0],
+            slab=slab,
+        )
+        bad = np.array([[0.0, 0.0, 20.0], [0.0, 0.0, 0.0]], dtype=np.float64)
+        good = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 20.0]], dtype=np.float64)
+
+        self.assertGreater(graph.energy_terms(bad)["environment"], 0.0)
+        self.assertEqual(graph.energy_terms(good)["environment"], 0.0)
+
+    def test_graph_contact_weights_are_honored(self):
+        graph = sm.create_macro_graph(
+            ["ligand", "protein"],
+            [],
+            contact_distance=4.0,
+            contact_weight=1.0,
+        )
+        coords = np.array([[0.0, 0.0, 0.0], [10.0, 0.0, 0.0]], dtype=np.float64)
+        cmap = np.array([[0.0, 1.0], [1.0, 0.0]], dtype=np.float64)
+        weights = np.array([[0.0, 5.0], [5.0, 0.0]], dtype=np.float64)
+
+        weighted = graph.energy_terms(coords, cmap, weights)["contacts"]
+        unweighted = graph.energy_terms(coords, cmap)["contacts"]
+        self.assertAlmostEqual(weighted / unweighted, 5.0)
+
+    def test_macro_graph_polish_reports_missing_jax_cleanly_or_runs_tiny_smoke(self):
+        graph = sm.create_macro_graph(["ligand", "ligand"], [(0, 1, 1.5)])
+        coords = np.array([[0.0, 0.0, 0.0], [1.7, 0.0, 0.0]], dtype=np.float64)
+
+        if importlib.util.find_spec("jax") is None:
+            with self.assertRaises(sm.JaxUnavailableError):
+                graph.polish(coords, n_steps=1)
+            return
+
+        polished = graph.polish(coords, n_steps=1)
+        self.assertEqual(polished.shape, coords.shape)
+        self.assertTrue(np.isfinite(polished).all())
+
 
 if __name__ == "__main__":
     unittest.main()

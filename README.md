@@ -368,6 +368,31 @@ polished = complex_engine.polish(coords, contact_map=af3_or_boltz_contacts)
 
 The complex contact Hamiltonian reports `contacts_intra` and `contacts_inter` separately. `ComplexSpec(w_intra=..., w_inter=...)` lets interface restraints carry a different weight from intra-chain folding restraints, which is useful when preserving docking geometry matters more than relaxing internal monomer noise.
 
+### Graph Sobolev Macro Backend
+
+The Kaggle notebook's original SHR cells are too linear and monolithic to swap the 1D DCT for a graph filter in place. The extracted `sobolev_macromolecule.py` layer is the modular boundary: `SobolevMacromolecule` keeps single-chain DCT smoothing, `SobolevComplex` keeps per-chain DCT smoothing for central-dogma complexes, and `SobolevMacro` replaces the DCT with a graph Laplacian spectral filter for branched or non-polymer systems.
+
+```python
+from sobolev_macromolecule import SlabPotential, create_macro_graph
+
+glycan = create_macro_graph(
+    node_types=["glycan", "glycan", "glycan", "glycan"],
+    bonds=[(0, 1, 1.4), (1, 2, 1.4), (1, 3, 1.6)],
+)
+
+membrane_patch = create_macro_graph(
+    node_types=["lipid_tail", "lipid_head"],
+    bonds=[],
+    slab=SlabPotential(half_thickness=15.0),
+)
+
+filtered_gradient = glycan.smooth_gradient(raw_gradient)
+polished = glycan.polish(coords, contact_map=boltz_or_af3_restraints)
+```
+
+`SobolevMacro` uses `GraphSpec` tensors for node types, bead radii, arbitrary covalent edges, contact weights, and optional implicit membrane slab potentials. The Sobolev filter is
+`U @ ((U.T @ gradient) / (1 + alpha * lambda))`, where `U` and `lambda` come from the graph Laplacian `L = D - A`. This acts like the old DCT on a line, but also handles glycan trees, ligand bond graphs, disconnected systems, lipid patches, and coarse MARTINI-style beads without smoothing across non-edges.
+
 ---
 
 ## Dependencies

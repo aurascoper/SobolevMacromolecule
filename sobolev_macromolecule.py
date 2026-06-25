@@ -131,6 +131,85 @@ class ComplexSpec:
         return out
 
 
+@dataclass(frozen=True)
+class GraphBond:
+    """Covalent/topological edge in a heterogeneous molecular graph."""
+
+    i: int
+    j: int
+    ideal_distance: float
+    stiffness: float = 100.0
+
+
+@dataclass(frozen=True)
+class SlabPotential:
+    """Implicit membrane slab potential centered on the z axis."""
+
+    half_thickness: float = 15.0
+    hydrophobic_strength: float = 1.0
+    hydrophilic_strength: float = 1.0
+    hydrophobic_types: tuple[str, ...] = ("lipid_tail", "hydrophobic")
+    hydrophilic_types: tuple[str, ...] = ("lipid_head", "hydrophilic", "protein_loop")
+
+
+@dataclass(frozen=True)
+class GraphNodeFeatures:
+    """Per-bead physical properties for SobolevMacro graph simulations."""
+
+    node_types: tuple[str, ...]
+    radii: tuple[float, ...]
+    masses: tuple[float, ...] | None = None
+    charges: tuple[float, ...] | None = None
+
+    @property
+    def n_nodes(self) -> int:
+        return len(self.node_types)
+
+    def validate(self) -> None:
+        n = self.n_nodes
+        if len(self.radii) != n:
+            raise ValueError("radii length must match node_types length")
+        if self.masses is not None and len(self.masses) != n:
+            raise ValueError("masses length must match node_types length")
+        if self.charges is not None and len(self.charges) != n:
+            raise ValueError("charges length must match node_types length")
+
+
+@dataclass(frozen=True)
+class GraphSpec:
+    """Unified heterogeneous graph topology for SobolevMacro."""
+
+    nodes: GraphNodeFeatures
+    bonds: tuple[GraphBond, ...]
+    contact_distance: float = 8.0
+    contact_weight: float = 2.0
+    sobolev_alpha: float = 5.0
+    gradient_clip: float = 2.0
+    slab: SlabPotential | None = None
+
+    @property
+    def n_nodes(self) -> int:
+        return self.nodes.n_nodes
+
+    def validate(self, n_nodes: int | None = None) -> None:
+        self.nodes.validate()
+        if n_nodes is not None and int(n_nodes) != self.n_nodes:
+            raise ValueError(f"graph has {self.n_nodes} nodes, expected {n_nodes}")
+        for bond in self.bonds:
+            if bond.i == bond.j:
+                raise ValueError("self bonds are not allowed")
+            if not (0 <= bond.i < self.n_nodes and 0 <= bond.j < self.n_nodes):
+                raise ValueError(f"bond {(bond.i, bond.j)} is outside node range")
+
+    def adjacency_matrix(self) -> np.ndarray:
+        self.validate()
+        adjacency = np.zeros((self.n_nodes, self.n_nodes), dtype=np.float64)
+        for bond in self.bonds:
+            adjacency[bond.i, bond.j] = 1.0
+            adjacency[bond.j, bond.i] = 1.0
+        return adjacency
+
+
 RNA_FRONTENDS = (
     RestraintFrontend("RNA-FM", "sequence embedding contacts", "contact_map"),
     RestraintFrontend("RibonanzaNet-2", "pairwise RNA structural signal", "contact_map"),
@@ -365,6 +444,94 @@ def _complex_neighbor_mask(spec: ComplexSpec) -> np.ndarray:
     return upper & ~adjacent_same_chain
 
 
+def make_graph_spec(
+    node_types: Sequence[str],
+    bonds: Sequence[tuple[int, int, float] | GraphBond],
+    radii: Sequence[float] | None = None,
+    contact_distance: float = 8.0,
+    contact_weight: float = 2.0,
+    sobolev_alpha: float = 5.0,
+    gradient_clip: float = 2.0,
+    slab: SlabPotential | None = None,
+) -> GraphSpec:
+    """Build a heterogeneous graph spec from node labels and bond tuples."""
+
+    node_type_tuple = tuple(str(node_type) for node_type in node_types)
+    if radii is None:
+        radii = tuple(default_radius_for_type(node_type) for node_type in node_type_tuple)
+    graph_bonds: list[GraphBond] = []
+    for bond in bonds:
+        if isinstance(bond, GraphBond):
+            graph_bonds.append(bond)
+        else:
+            i, j, ideal = bond
+            graph_bonds.append(GraphBond(int(i), int(j), float(ideal)))
+    spec = GraphSpec(
+        nodes=GraphNodeFeatures(node_type_tuple, tuple(float(r) for r in radii)),
+        bonds=tuple(graph_bonds),
+        contact_distance=float(contact_distance),
+        contact_weight=float(contact_weight),
+        sobolev_alpha=float(sobolev_alpha),
+        gradient_clip=float(gradient_clip),
+        slab=slab,
+    )
+    spec.validate()
+    return spec
+
+
+def default_radius_for_type(node_type: str) -> float:
+    """Coarse physical radius lookup for graph sterics."""
+
+    key = node_type.strip().lower()
+    if key in {"coarse", "capsid_bead", "martini"}:
+        return 15.0
+    if key in {"protein", "c_alpha", "ca"}:
+        return 4.2
+    if key in {"rna", "dna", "c1", "p"}:
+        return 3.5
+    if key in {"lipid_tail", "lipid_head", "lipid"}:
+        return 4.5
+    if key in {"ligand", "small_molecule", "atom"}:
+        return 1.5
+    if key in {"glycan", "sugar", "carbohydrate"}:
+        return 2.5
+    return 3.0
+
+
+def graph_laplacian(adjacency: np.ndarray) -> np.ndarray:
+    """Return the unnormalized graph Laplacian L = D - A."""
+
+    adj = np.asarray(adjacency, dtype=np.float64)
+    if adj.ndim != 2 or adj.shape[0] != adj.shape[1]:
+        raise ValueError("adjacency must be a square matrix")
+    sym = np.maximum(adj, adj.T)
+    degree = np.sum(sym, axis=1)
+    return np.diag(degree) - sym
+
+
+def graph_sobolev_smooth_numpy(
+    gradient: np.ndarray,
+    adjacency: np.ndarray,
+    alpha: float = 5.0,
+) -> np.ndarray:
+    """Apply graph Laplacian Sobolev smoothing to an arbitrary topology."""
+
+    grad = np.asarray(gradient, dtype=np.float64)
+    if grad.ndim != 2 or grad.shape[1] != 3:
+        raise ValueError("gradient must have shape (N, 3)")
+    laplacian = graph_laplacian(adjacency)
+    if laplacian.shape[0] != len(grad):
+        raise ValueError("gradient and adjacency sizes differ")
+    eigvals, eigvecs = np.linalg.eigh(laplacian)
+    spectral = eigvecs.T @ grad
+    filtered = spectral / (1.0 + float(alpha) * eigvals[:, None])
+    return eigvecs @ filtered
+
+
+def _bond_adjacency_from_graph(graph_spec: GraphSpec) -> np.ndarray:
+    return graph_spec.adjacency_matrix() > 0
+
+
 def radius_of_gyration(coords: np.ndarray) -> float:
     arr = np.asarray(coords, dtype=np.float64)
     if arr.ndim != 2 or arr.shape[1] != 3 or len(arr) == 0:
@@ -577,6 +744,92 @@ def total_energy_complex_numpy(
     contact_map: np.ndarray | None = None,
 ) -> float:
     return energy_terms_complex_numpy(coords, complex_spec, contact_map)["total"]
+
+
+def energy_terms_graph_numpy(
+    coords: np.ndarray,
+    graph_spec: GraphSpec,
+    contact_map: np.ndarray | None = None,
+    contact_weights: np.ndarray | None = None,
+) -> dict[str, float]:
+    """Evaluate the unified SobolevMacro graph Hamiltonian with NumPy."""
+
+    arr = np.asarray(coords, dtype=np.float64)
+    if arr.ndim != 2 or arr.shape[1] != 3:
+        raise ValueError("coords must have shape (N, 3)")
+    graph_spec.validate(len(arr))
+    n = len(arr)
+
+    bond = 0.0
+    for edge in graph_spec.bonds:
+        dist = float(np.sqrt(np.sum((arr[edge.i] - arr[edge.j]) ** 2) + 1e-8))
+        bond += edge.stiffness * (dist - edge.ideal_distance) ** 2
+
+    diff = arr[:, None, :] - arr[None, :, :]
+    dist = np.sqrt(np.sum(diff * diff, axis=-1) + 1e-2)
+    radii = np.asarray(graph_spec.nodes.radii, dtype=np.float64)
+    sigma = radii[:, None] + radii[None, :]
+    idx = np.arange(n)
+    upper = idx[None, :] > idx[:, None]
+    bonded = _bond_adjacency_from_graph(graph_spec)
+    steric_mask = upper & ~bonded
+    steric = float(np.sum((np.maximum(sigma - dist, 0.0) * steric_mask) ** 2))
+
+    cmap = _as_contact_map(contact_map, n)
+    if contact_weights is None:
+        weights = np.full((n, n), graph_spec.contact_weight, dtype=np.float64)
+    else:
+        weights = np.asarray(contact_weights, dtype=np.float64)
+        if weights.shape != (n, n):
+            raise ValueError(f"contact_weights shape {weights.shape}, expected {(n, n)}")
+    if cmap.any():
+        contact_dist = np.sqrt(np.sum(diff * diff, axis=-1) + 1e-8)
+        violations = np.maximum(contact_dist - graph_spec.contact_distance, 0.0)
+        contacts = float(np.sum(cmap * weights * (violations**2)))
+    else:
+        contacts = 0.0
+
+    environment = 0.0
+    if graph_spec.slab is not None:
+        slab = graph_spec.slab
+        z_abs = np.abs(arr[:, 2])
+        hydrophobic = np.array(
+            [node_type in slab.hydrophobic_types for node_type in graph_spec.nodes.node_types],
+            dtype=bool,
+        )
+        hydrophilic = np.array(
+            [node_type in slab.hydrophilic_types for node_type in graph_spec.nodes.node_types],
+            dtype=bool,
+        )
+        tail_violation = np.maximum(z_abs - slab.half_thickness, 0.0)
+        head_violation = np.maximum(slab.half_thickness - z_abs, 0.0)
+        environment = float(
+            slab.hydrophobic_strength * np.sum((tail_violation * hydrophobic) ** 2)
+            + slab.hydrophilic_strength * np.sum((head_violation * hydrophilic) ** 2)
+        )
+
+    total = bond + steric + contacts + environment
+    return {
+        "bond": float(bond),
+        "steric": float(steric),
+        "contacts": float(contacts),
+        "environment": float(environment),
+        "total": float(total),
+    }
+
+
+def total_energy_graph_numpy(
+    coords: np.ndarray,
+    graph_spec: GraphSpec,
+    contact_map: np.ndarray | None = None,
+    contact_weights: np.ndarray | None = None,
+) -> float:
+    return energy_terms_graph_numpy(
+        coords,
+        graph_spec,
+        contact_map=contact_map,
+        contact_weights=contact_weights,
+    )["total"]
 
 
 def watson_crick_contact_map(
@@ -910,6 +1163,177 @@ class SobolevComplex:
         return np.asarray(final)
 
 
+class SobolevMacro:
+    """Graph-based Sobolev engine for branched and non-polymer systems."""
+
+    def __init__(self, graph_spec: GraphSpec):
+        graph_spec.validate()
+        self.spec = graph_spec
+
+    def energy_terms(
+        self,
+        coords: np.ndarray,
+        contact_map: np.ndarray | None = None,
+        contact_weights: np.ndarray | None = None,
+    ) -> dict[str, float]:
+        return energy_terms_graph_numpy(
+            coords,
+            self.spec,
+            contact_map=contact_map,
+            contact_weights=contact_weights,
+        )
+
+    def total_energy(
+        self,
+        coords: np.ndarray,
+        contact_map: np.ndarray | None = None,
+        contact_weights: np.ndarray | None = None,
+    ) -> float:
+        return total_energy_graph_numpy(
+            coords,
+            self.spec,
+            contact_map=contact_map,
+            contact_weights=contact_weights,
+        )
+
+    def smooth_gradient(self, gradient: np.ndarray) -> np.ndarray:
+        return graph_sobolev_smooth_numpy(
+            gradient,
+            self.spec.adjacency_matrix(),
+            alpha=self.spec.sobolev_alpha,
+        )
+
+    def polish(
+        self,
+        coords: np.ndarray,
+        contact_map: np.ndarray | None = None,
+        contact_weights: np.ndarray | None = None,
+        n_steps: int = 2000,
+        lr: float = 0.005,
+    ) -> np.ndarray:
+        """Run graph Laplacian Sobolev polish on a heterogeneous graph."""
+
+        try:
+            import jax
+
+            jax.config.update("jax_enable_x64", True)
+            import jax.numpy as jnp
+        except Exception as exc:  # pragma: no cover - depends on local install
+            raise JaxUnavailableError(
+                "JAX is required for SobolevMacro.polish(); "
+                "install the repo requirements to enable optimization."
+            ) from exc
+
+        raw = np.asarray(coords, dtype=np.float64)
+        if raw.ndim != 2 or raw.shape[1] != 3:
+            raise ValueError("coords must have shape (N, 3)")
+        self.spec.validate(len(raw))
+        n = len(raw)
+        cmap_np = _as_contact_map(contact_map, n)
+        if contact_weights is None:
+            contact_weights_np = np.full((n, n), self.spec.contact_weight, dtype=np.float64)
+        else:
+            contact_weights_np = np.asarray(contact_weights, dtype=np.float64)
+            if contact_weights_np.shape != (n, n):
+                raise ValueError(
+                    f"contact_weights shape {contact_weights_np.shape}, expected {(n, n)}"
+                )
+
+        adjacency = jnp.array(self.spec.adjacency_matrix(), dtype=jnp.float64)
+        laplacian = jnp.diag(jnp.sum(adjacency, axis=1)) - adjacency
+        eigvals, eigvecs = jnp.linalg.eigh(laplacian)
+        radii = jnp.array(self.spec.nodes.radii, dtype=jnp.float64)
+        bonded = jnp.array(_bond_adjacency_from_graph(self.spec), dtype=bool)
+        contact_map_jax = jnp.array(cmap_np, dtype=jnp.float64)
+        contact_weights_jax = jnp.array(contact_weights_np, dtype=jnp.float64)
+        idx = jnp.arange(n)
+        upper = idx[None, :] > idx[:, None]
+        steric_mask = upper & ~bonded
+
+        bond_i = jnp.array([edge.i for edge in self.spec.bonds], dtype=jnp.int32)
+        bond_j = jnp.array([edge.j for edge in self.spec.bonds], dtype=jnp.int32)
+        bond_d0 = jnp.array(
+            [edge.ideal_distance for edge in self.spec.bonds],
+            dtype=jnp.float64,
+        )
+        bond_k = jnp.array([edge.stiffness for edge in self.spec.bonds], dtype=jnp.float64)
+
+        if self.spec.slab is None:
+            hydrophobic = jnp.zeros(n, dtype=bool)
+            hydrophilic = jnp.zeros(n, dtype=bool)
+            slab_half = 0.0
+            slab_k_hydrophobic = 0.0
+            slab_k_hydrophilic = 0.0
+        else:
+            slab = self.spec.slab
+            hydrophobic = jnp.array(
+                [node_type in slab.hydrophobic_types for node_type in self.spec.nodes.node_types],
+                dtype=bool,
+            )
+            hydrophilic = jnp.array(
+                [node_type in slab.hydrophilic_types for node_type in self.spec.nodes.node_types],
+                dtype=bool,
+            )
+            slab_half = float(slab.half_thickness)
+            slab_k_hydrophobic = float(slab.hydrophobic_strength)
+            slab_k_hydrophilic = float(slab.hydrophilic_strength)
+
+        def energy_bond(x):
+            if len(self.spec.bonds) == 0:
+                return jnp.array(0.0, dtype=jnp.float64)
+            diffs = x[bond_i] - x[bond_j]
+            dists = jnp.sqrt(jnp.sum(diffs**2, axis=-1) + 1e-8)
+            return jnp.sum(bond_k * (dists - bond_d0) ** 2)
+
+        def energy_steric(x):
+            diff = x[:, None, :] - x[None, :, :]
+            dist = jnp.sqrt(jnp.sum(diff**2, axis=-1) + 1e-2)
+            sigma = radii[:, None] + radii[None, :]
+            violations = jnp.maximum(sigma - dist, 0.0)
+            return jnp.sum((violations * steric_mask) ** 2)
+
+        def energy_contacts(x):
+            diff = x[:, None, :] - x[None, :, :]
+            dist = jnp.sqrt(jnp.sum(diff**2, axis=-1) + 1e-8)
+            violations = jnp.maximum(dist - self.spec.contact_distance, 0.0)
+            return jnp.sum(contact_map_jax * contact_weights_jax * (violations**2))
+
+        def energy_environment(x):
+            z_abs = jnp.abs(x[:, 2])
+            tail_violation = jnp.maximum(z_abs - slab_half, 0.0)
+            head_violation = jnp.maximum(slab_half - z_abs, 0.0)
+            return (
+                slab_k_hydrophobic * jnp.sum((tail_violation * hydrophobic) ** 2)
+                + slab_k_hydrophilic * jnp.sum((head_violation * hydrophilic) ** 2)
+            )
+
+        def total_energy(x):
+            return energy_bond(x) + energy_steric(x) + energy_contacts(x) + energy_environment(x)
+
+        def graph_sobolev_smooth(gradient):
+            spectral = eigvecs.T @ gradient
+            filtered = spectral / (1.0 + self.spec.sobolev_alpha * eigvals[:, None])
+            return eigvecs @ filtered
+
+        @jax.jit
+        def step_fn(x):
+            grads = jax.grad(total_energy)(x)
+            smooth_grads = graph_sobolev_smooth(grads)
+            clipped = jnp.clip(
+                smooth_grads,
+                -self.spec.gradient_clip,
+                self.spec.gradient_clip,
+            )
+            return x - float(lr) * clipped
+
+        def scan_body(x, _):
+            return step_fn(x), None
+
+        coords_jax = jnp.array(raw, dtype=jnp.float64)
+        final, _ = jax.lax.scan(scan_body, coords_jax, None, length=int(n_steps))
+        return np.asarray(final)
+
+
 def create_macromolecule(kind: str, **overrides) -> SobolevMacromolecule:
     """Factory entrypoint for RNA/protein/dsDNA Sobolev polishing."""
 
@@ -928,6 +1352,32 @@ def create_complex(
             chain_lengths,
             w_intra=w_intra,
             w_inter=w_inter,
+        )
+    )
+
+
+def create_macro_graph(
+    node_types: Sequence[str],
+    bonds: Sequence[tuple[int, int, float] | GraphBond],
+    radii: Sequence[float] | None = None,
+    contact_distance: float = 8.0,
+    contact_weight: float = 2.0,
+    sobolev_alpha: float = 5.0,
+    gradient_clip: float = 2.0,
+    slab: SlabPotential | None = None,
+) -> SobolevMacro:
+    """Factory entrypoint for heterogeneous graph SobolevMacro simulations."""
+
+    return SobolevMacro(
+        make_graph_spec(
+            node_types,
+            bonds,
+            radii=radii,
+            contact_distance=contact_distance,
+            contact_weight=contact_weight,
+            sobolev_alpha=sobolev_alpha,
+            gradient_clip=gradient_clip,
+            slab=slab,
         )
     )
 
