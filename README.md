@@ -346,6 +346,28 @@ polished_dna = dna_engine.polish(p_coords, contact_map=watson_crick_contacts)
 
 The presets are deliberately lightweight. A new frontend only needs to emit a square contact/restraint matrix in the same residue order as the coordinates; `SobolevMacromolecule.polish()` handles the shared bond, steric, contact, radius-of-gyration, optional bending, and Sobolev $H^1$ gradient-preconditioned update. For dsDNA, `watson_crick_contact_map()` builds the explicit inter-strand pairing restraints while the bending term preserves helix stiffness.
 
+### Mixed Complexes
+
+`SobolevComplex` extends the same engine to CRISPR-Cas9-like protein/RNA/DNA assemblies. The key change is tensor masking: bonds are evaluated only inside chains, steric radii and bond lengths are looked up from each bead's molecular type, radius-of-gyration basins are computed per chain, and the Sobolev DCT filter is applied independently to each chain gradient slice so unrelated chain endpoints are never smoothed together.
+
+```python
+from sobolev_macromolecule import SobolevComplex
+
+sequence, complex_engine = SobolevComplex.from_fasta("""
+>Cas9|protein
+MKK...
+>guide|rna
+GGA...
+>target|dsdna
+ATGC...
+""")
+
+terms = complex_engine.energy_terms(coords, contact_map=af3_or_boltz_contacts)
+polished = complex_engine.polish(coords, contact_map=af3_or_boltz_contacts)
+```
+
+The complex contact Hamiltonian reports `contacts_intra` and `contacts_inter` separately. `ComplexSpec(w_intra=..., w_inter=...)` lets interface restraints carry a different weight from intra-chain folding restraints, which is useful when preserving docking geometry matters more than relaxing internal monomer noise.
+
 ---
 
 ## Dependencies
