@@ -393,6 +393,12 @@ polished = glycan.polish(coords, contact_map=boltz_or_af3_restraints)
 `SobolevMacro` uses `GraphSpec` tensors for node types, bead radii, arbitrary covalent edges, contact weights, and optional implicit membrane slab potentials. The Sobolev filter is
 `U @ ((U.T @ gradient) / (1 + alpha * lambda))`, where `U` and `lambda` come from the graph Laplacian `L = D - A`. This acts like the old DCT on a line, but also handles glycan trees, ligand bond graphs, disconnected systems, lipid patches, and coarse MARTINI-style beads without smoothing across non-edges.
 
+### Whole-Cell Visualization Bridge
+
+Whole-cell scenes should be rendered by an instanced WebGPU/OpenUSD/Unreal frontend, not by loading every bead into a desktop molecular viewer. `sobolev_visualization.py` adds the thin adapter layer: binary coordinate frames for SHM/gRPC/WebSocket transport, renderer-ready `(N, 4, 4)` instance matrices, abundance-to-asset-id expansion, JSON scene manifests, minimal OpenUSD PointInstancer export, and far-field coarse graining around an active-site sphere.
+
+See [`docs/whole-cell-visualization.md`](docs/whole-cell-visualization.md) for the multi-scale data integration and cloud rendering architecture, including the recommended split between A100/H100-class SobolevMacro compute and L4/G5-class Pixel Streaming visualization.
+
 ---
 
 ## Dependencies
