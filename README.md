@@ -72,17 +72,32 @@ RNA-FM has a hard architectural truncation at 1,022 nt. For megascale targets (e
 
 For each window $w$ covering positions $[a_w, b_w)$, a taper weight $\omega_{w}(i)$ is computed for each position $i$:
 
-$$\omega_{w}(i) = \begin{cases} \frac{i - a_w}{\tau} & i \in [a_w,\; a_w + \tau) \\ 1 & i \in [a_w + \tau,\; b_w - \tau) \\ \frac{b_w - i}{\tau} & i \in [b_w - \tau,\; b_w) \end{cases}$$
+$$
+\omega_{w}(i) =
+\left\{
+\begin{array}{ll}
+\frac{i - a_w}{\tau} & i \in [a_w,\; a_w + \tau) \\
+1 & i \in [a_w + \tau,\; b_w - \tau) \\
+\frac{b_w - i}{\tau} & i \in [b_w - \tau,\; b_w)
+\end{array}
+\right.
+$$
 
 The blended embedding at position $i$ is:
 
 $$\tilde{e}(i) = \frac{\sum_w \omega_{w}(i)\; e_w(i)}{\sum_w \omega_{w}(i)}$$
 
-The blended embeddings are converted to a global pairwise contact map via cosine similarity:
+The blended embeddings are converted to a global pairwise contact map via cosine similarity. The cosine is rescaled to $P_{ij} = (S_{ij}+1)/2$, then binarized with a sequence-separation threshold:
 
-$$C_{ij} = \mathbf{1}\!\left[\frac{\tilde{e}(i) \cdot \tilde{e}(j)}{\|\tilde{e}(i)\|\|\tilde{e}(j)\|} > \theta\right] \cdot \mathbf{1}[|i - j| \geq 6]$$
+$$
+\theta(s) = \min\left(\theta_{\max},\; \theta_0 \left(\frac{\max(s, 6)}{6}\right)^\alpha\right),\qquad s = |i-j|
+$$
 
-with $\theta = 0.85$ and minimum sequence separation 6.
+$$
+C_{ij} = \mathbf{1}[P_{ij} > \theta(|i-j|)] \cdot \mathbf{1}[|i-j| \geq 6]
+$$
+
+Defaults are $\theta_0 = 0.85$, $\theta_{\max} = 0.94$, and $\alpha = 0.02$. This preserves the original local threshold while requiring stronger RNA-FM evidence for long-range contacts that would otherwise over-saturate megascale contact maps.
 
 ---
 
@@ -108,7 +123,7 @@ $\sigma_{\text{clash}} \in [2.6, 3.0]$ Å, length-dependent (see dynamic schedul
 
 $$E_{\text{DL}} = w_{\text{DL}} \sum_{(i,j) \in \mathcal{C}} \left(\max\!\left(0,\; \|\mathbf{x}_i - \mathbf{x}_j\| - d_{\text{contact}}\right)\right)^2$$
 
-$\mathcal{C}$ is the contact set from a 50/50 consensus of the HWS pipeline (RNA-FM embeddings) and RibonanzaNet-2 predictions, thresholded to binary. $d_{\text{contact}} = 8.0$ Å, and $w_{\text{DL}} \in [10.0, 25.0]$ scales with sequence length.
+$\mathcal{C}$ is the contact set from a 50/50 consensus of the HWS pipeline (RNA-FM embeddings) and RibonanzaNet-2 predictions, thresholded to binary. The RNA-FM side uses the adaptive $\theta(|i-j|)$ rule above, while RibonanzaNet-2 contributes its learned pairwise channel. $d_{\text{contact}} = 8.0$ Å, and $w_{\text{DL}} \in [10.0, 25.0]$ scales with sequence length.
 
 ### Radius of Gyration Term (Flory Scaling)
 
@@ -293,6 +308,30 @@ The seam between aligned chunks is blended with a linear taper over the overlap 
 | **Private leaderboard** | **0.50934** |
 
 The private > public inversion reflects that SHR physics generalizes to novel RNA families (the private set composition) better than pure deep learning baselines.
+
+---
+
+## Adaptive Contact Calibration
+
+`adaptive_contacts.py` provides the pure-NumPy contact-map utilities used to tune this layer outside the Kaggle notebook. The intended A/B protocol is:
+
+1. Match the predicted contact-density decay curve to polymer scaling, $P(s) \propto s^{-\gamma}$, targeting $\gamma \approx 1.0$ to $1.4$ for folded RNA.
+2. Report MCC or F1 separately for short ($6 \leq s \leq 24$), medium ($25 \leq s \leq 100$), and long-range ($s > 100$) contacts when labels are available.
+3. Track downstream SHR energy and polish-gate `tm_self`; good thresholds reduce energetic frustration without moving accepted structures out of their raw-model basin.
+
+---
+
+## Sobolev Macromolecule Extension
+
+The Sobolev $H^1$ preconditioner is polymer-agnostic: it smooths high-frequency gradient modes along an indexed chain. To adapt the engine beyond RNA, keep the JAX optimizer and swap the frontend restraints plus physical constants:
+
+| Domain | Bead | $d_0$ | Compaction | Frontend restraints |
+|---|---|---:|---|---|
+| RNA | C1′ | 5.95 Å | $R_g = 3.5N^{0.45}$ | RNA-FM, RibonanzaNet-2, templates |
+| Proteins | Cα | 3.80 Å | $R_g = R_0N^{0.33}$ | ESM-3, Chai-1, Boltz/Protenix confidence maps |
+| dsDNA | C1′ or P | ~4.8 Å | worm-like-chain bending term, not Flory collapse | Boltz/Protenix/AF3 nucleic-acid complex restraints |
+
+For dsDNA, disable the RNA-style collapse basin and add bending plus inter-strand Watson-Crick restraints so the optimizer preserves helix stiffness rather than crushing the duplex.
 
 ---
 
