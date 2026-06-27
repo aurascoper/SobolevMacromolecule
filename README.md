@@ -153,9 +153,9 @@ $$\eta(t) = \eta_0 \left(1 - \frac{t}{T}\right)$$
 
 ## Guarded Hybrid Polish for External Candidate Pipelines
 
-SobolevRNA now includes `sobolev_polish_gate.py`, a production-safe bridge for
+SobolevRNA was originally created for the Stanford 3D RNA Part 2's Kaggle Competition, but was thereafter generalized to SobolevMacromolecule, which now first pivoted with `sobolev_polish_gate.py`, a production-safe bridge for
 using SHR as a post-processing layer on strong external candidates such as the
-Stanford RNA 3D Folding Part 2 1st-place ensemble. The intended integration is
+Competition's 1st-place ensemble. The intended integration is
 serial:
 
 ```
