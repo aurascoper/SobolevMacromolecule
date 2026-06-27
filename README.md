@@ -2,6 +2,11 @@
 
 **Megascale RNA 3D Structure Prediction · 0.509 private TM-score · Stanford RNA 3D Folding Part 2 (Kaggle)**
 
+> **Safety and scope:** This repository is for non-infectious computational
+> structure modeling, relaxation, and visualization. It does not contain
+> infectious material, reverse-genetics workflows, synthesis-ready constructs,
+> or laboratory protocols. See [SAFETY.md](SAFETY.md).
+
 Multi-model RNA 3D structure prediction pipeline with a custom physics relaxation engine, designed for megascale targets (up to 4,640 nt). Achieves a private/public score inversion (0.387 public → 0.509 private) through physics-guided generalization rather than benchmark overfitting.
 
 📄 **[Full technical whitepaper with derivations](docs/whitepaper.md)** · [Reviewer notes](docs/reviewer-notes-opus.md) · [Kaggle competition](https://www.kaggle.com/competitions/stanford-rna-3d-folding-2)
@@ -398,6 +403,78 @@ polished = glycan.polish(coords, contact_map=boltz_or_af3_restraints)
 Whole-cell scenes should be rendered by an instanced WebGPU/OpenUSD/Unreal frontend, not by loading every bead into a desktop molecular viewer. `sobolev_visualization.py` adds the thin adapter layer: binary coordinate frames for SHM/gRPC/WebSocket transport, renderer-ready `(N, 4, 4)` instance matrices, abundance-to-asset-id expansion, JSON scene manifests, minimal OpenUSD PointInstancer export, and far-field coarse graining around an active-site sphere.
 
 See [`docs/whole-cell-visualization.md`](docs/whole-cell-visualization.md) for the multi-scale data integration and cloud rendering architecture, including the recommended split between A100/H100-class SobolevMacro compute and L4/G5-class Pixel Streaming visualization.
+
+---
+
+## BDBV Visualization — Safety, Scope, and Provenance
+
+This repository includes a **non-infectious, integrative, multi-scale
+structural visualization of a Bundibugyo ebolavirus–associated virion
+architecture**, assembled from public structural components, homologous
+templates, and computationally relaxed placement/packing coordinates.
+This is a **hypothesis-generating model**, not an experimentally
+validated complete virion reconstruction and not a genome or
+infectious-virus reconstruction.
+
+### PDB Accession Audit
+
+The initially assigned PDB IDs have been corrected after review against
+RCSB annotations:
+
+- **6N7J**: BDBV223 Fab bound to a 16-residue synthetic GP stalk peptide
+  (X-ray, 3.68 Å). This is NOT a full GP trimer — it is a small stalk
+  epitope + antibody complex. Set to `None` in the ChimeraX script until
+  a full GP trimer structure is properly vetted.
+- **4LDB**: Zaire ebolavirus (EBOV) VP40 dimer (X-ray, 2.6 Å). This is
+  NOT BDBV VP40 — it is a homologous template (~60% identity). Labeled
+  as a homolog in the provenance table.
+- **7ZPE**: Human branched-chain keto acid dehydrogenase kinase —
+  completely unrelated to ebolavirus. This was a wrong PDB ID. Removed.
+
+### What This Repository Does Not Contain
+
+- No nucleotide or amino acid sequences of any pathogen
+- No synthesis-ready construct designs or cloning vectors
+- No reverse-genetics systems, minigenomes, replicons, or rescue protocols
+- No wet-lab protocols of any kind
+- No "one-click" pipeline that turns a sequence into a buildable pathogen
+
+### Appropriate Use
+
+- **Education**: visualizing filovirus architecture for students and trainees
+- **Structural interpretation**: communicating antibody-epitope geography
+- **Defensive research communication**: illustrating virion-scale organization
+- **Method demonstration**: showing the Sobolev/graph-relaxation engine
+- **Scene-building toolkit**: the visualization adapters are domain-agnostic
+
+### Documentation
+
+- [SAFETY.md](SAFETY.md) — full safety and scope statement
+- [PROVENANCE.md](PROVENANCE.md) — component-level provenance table
+  (source, organism, method, resolution, chain IDs, copy number,
+  placement rule, uncertainty) with the PDB accession audit
+- [docs/pathogen-modeling-provenance-template.md](docs/pathogen-modeling-provenance-template.md) —
+  blank provenance template for future pathogen-associated models
+
+### Video
+
+> **⚠️ Caveat:** This is an **integrative non-infectious BDBV-associated
+> virion visualization**, not a complete coordinate-exact reconstruction.
+> It is a hypothesis-generating model assembled from public structural
+> components, homologous templates, and computationally relaxed
+> placement/packing coordinates. See [PROVENANCE.md](PROVENANCE.md) for
+> the full provenance table and PDB accession audit.
+
+**[📷 BDBV Virion Visualization (35s, 1720×1080)](docs/media/bdbv_virion_visualization.mp4)**
+
+The video shows the 1,081 nm Bundibugyo ebolavirus–associated virion
+architecture visualization in UCSF ChimeraX, with instance transforms
+from the Sobolev graph relaxation engine placing PDB structures at
+JAX-computed coordinates along the virion envelope.
+
+*If the video does not render inline, download it from
+[docs/media/bdbv_virion_visualization.mp4](docs/media/bdbv_virion_visualization.mp4)
+and open locally.*
 
 ---
 
