@@ -78,14 +78,7 @@ RNA-FM has a hard architectural truncation at 1,022 nt. For megascale targets (e
 For each window $w$ covering positions $[a_w, b_w)$, a taper weight $\omega_{w}(i)$ is computed for each position $i$:
 
 $$
-\omega_{w}(i) =
-\left\{
-\begin{array}{ll}
-\frac{i - a_w}{\tau} & i \in [a_w,\; a_w + \tau) \\
-1 & i \in [a_w + \tau,\; b_w - \tau) \\
-\frac{b_w - i}{\tau} & i \in [b_w - \tau,\; b_w)
-\end{array}
-\right.
+\omega_{w}(i) = \begin{cases} \frac{i - a_w}{\tau} & \text{if } i \in [a_w,\; a_w + \tau) \\ 1 & \text{if } i \in [a_w + \tau,\; b_w - \tau) \\ \frac{b_w - i}{\tau} & \text{if } i \in [b_w - \tau,\; b_w) \end{cases}
 $$
 
 The blended embedding at position $i$ is:
@@ -465,16 +458,14 @@ RCSB annotations:
 > placement/packing coordinates. See [PROVENANCE.md](PROVENANCE.md) for
 > the full provenance table and PDB accession audit.
 
-**[📷 BDBV Virion Visualization (35s, 1720×1080)](docs/media/bdbv_virion_visualization.mp4)**
+![BDBV Virion Visualization](docs/media/bdbv_virion_visualization.gif)
 
 The video shows the 1,081 nm Bundibugyo ebolavirus–associated virion
 architecture visualization in UCSF ChimeraX, with instance transforms
 from the Sobolev graph relaxation engine placing PDB structures at
 JAX-computed coordinates along the virion envelope.
 
-*If the video does not render inline, download it from
-[docs/media/bdbv_virion_visualization.mp4](docs/media/bdbv_virion_visualization.mp4)
-and open locally.*
+*Full-resolution MP4 (35s, 1720×1080): [download](docs/media/bdbv_virion_visualization.mp4)*
 
 ---
 
