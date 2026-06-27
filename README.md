@@ -460,10 +460,10 @@ RCSB annotations:
 
 ![BDBV Virion Visualization](docs/media/bdbv_virion_visualization.gif)
 
-The video shows the 1,081 nm Bundibugyo ebolavirus–associated virion
-architecture visualization in UCSF ChimeraX, with instance transforms
-from the Sobolev graph relaxation engine placing PDB structures at
-JAX-computed coordinates along the virion envelope.
+The video shows a 1,081 nm BDBV-associated, hypothesis-generating
+filovirus architecture visualization in UCSF ChimeraX. Public structural
+components and homologous templates are instanced at computationally
+relaxed positions for educational and structural-communication purposes.
 
 *Full-resolution MP4 (35s, 1720×1080): [download](docs/media/bdbv_virion_visualization.mp4)*
 
