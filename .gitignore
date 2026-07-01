@@ -7,3 +7,16 @@ __pycache__/
 dist/
 build/
 .env
+
+# --- cpm (cell-phenotype MoA competition) ---
+venv/
+data/            # extracted public.zip (panels + csvs) — not committed
+weights/         # downloaded backbone weights + trained fold heads
+.feat_cache/     # cached frozen backbone features (.npy)
+submission*.csv  # generated submissions
+oof_*.npz        # out-of-fold logits
+calib_*.json     # generated calibration params (regenerate via src.calibrate)
+metrics_*.json   # generated OOF metrics
+*.pth
+*.safetensors
+kaggle_bundle/

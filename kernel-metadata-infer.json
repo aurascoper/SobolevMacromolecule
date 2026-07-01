@@ -1,0 +1,15 @@
+{
+  "id": "REPLACE_USERNAME/sobolevcellular-cpm-infer",
+  "title": "SobolevCellular CPM infer",
+  "code_file": "notebooks/kaggle_infer.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": false,
+  "dataset_sources": [
+    "REPLACE_USERNAME/sobolevcellular-cpm-bundle"
+  ],
+  "competition_sources": [],
+  "kernel_sources": []
+}
