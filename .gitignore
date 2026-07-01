@@ -9,14 +9,17 @@ build/
 .env
 
 # --- cpm (cell-phenotype MoA competition) ---
+# NOTE: gitignore does not support inline comments — keep patterns bare.
 venv/
-data/            # extracted public.zip (panels + csvs) — not committed
-weights/         # downloaded backbone weights + trained fold heads
-.feat_cache/     # cached frozen backbone features (.npy)
-submission*.csv  # generated submissions
-oof_*.npz        # out-of-fold logits
-calib_*.json     # generated calibration params (regenerate via src.calibrate)
-metrics_*.json   # generated OOF metrics
+data/
+weights/
+.feat_cache/
+submission*.csv
+oof_*.npz
+calib_*.json
+metrics_*.json
 *.pth
 *.safetensors
 kaggle_bundle/
+.eris_dryrun/
+solution.nbconvert.ipynb

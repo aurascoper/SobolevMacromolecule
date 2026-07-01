@@ -22,8 +22,10 @@ LICENSE_OK = os.environ.get("CPM_LICENSE_OK", "0") == "1"
 
 # name -> (feat_dim, input_mode)
 BACKBONES = {
-    "imagenet_convnext_tiny": (768, "composite"),
     "imagenet_convnext_nano": (640, "composite"),
+    "imagenet_convnext_tiny": (768, "composite"),
+    "imagenet_convnext_small": (768, "composite"),
+    "imagenet_convnext_base": (1024, "composite"),
     "openphenom": (384, "channels"),      # CA-MAE ViT-S/16, ~22M params
     "channelvit": (384, "channels"),
 }
